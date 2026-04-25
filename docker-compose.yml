@@ -1,0 +1,18 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: insight-board_mysql_container
+    restart: always
+    ports:
+      - '3306:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:alpine
+    container_name: insight-board_redis_container
+    ports:
+      - '6379:6379'
