@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Res,
-  UseGuards,
-  Req,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Controller, Post, Body, Res, UseGuards, Req } from '@nestjs/common';
 import { type Response, type Request } from 'express';
 import { AuthService } from './auth.service';
 import {
@@ -36,7 +28,7 @@ export class AuthController {
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -53,13 +45,13 @@ export class AuthController {
   async invite(@Body() inviteList: InviteUserDto[]) {
     return await this.authService.invite(inviteList);
   }
-
-  @Post('token/access')
+  @Post('refresh')
   async rotateToken(@Req() req: Request) {
     const refreshToken = req.cookies['refreshToken'] as string | undefined;
 
-    if (!refreshToken)
-      throw new UnauthorizedException('리프레시 토큰이 없습니다.');
+    if (!refreshToken) {
+      return null;
+    }
     return await this.authService.rotateToken(refreshToken);
   }
 

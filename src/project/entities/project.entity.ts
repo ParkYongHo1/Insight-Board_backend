@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { ProjectMemberModel } from './project-member.entity';
 
-@Entity('project_model') // 테이블명 명시
+@Entity('project_model')
 export class ProjectModel {
   @PrimaryGeneratedColumn()
   id: number;
@@ -20,9 +20,6 @@ export class ProjectModel {
   @Column({ nullable: true })
   description: string;
 
-  /**
-   * [수정] 직접 UserModel을 참조하지 않고 중간 테이블을 참조합니다.
-   */
   @OneToMany(() => ProjectMemberModel, (membership) => membership.project)
   members: ProjectMemberModel[];
 

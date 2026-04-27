@@ -131,10 +131,8 @@ export class AuthService {
       dto.password = await bcrypt.hash(dto.password, salt);
     }
 
-    // 1. 유저 정보 업데이트 (이름, 비번)
     await this.userService.finalizeRegistration(payload.email, dto);
 
-    // 2. [핵심] 조인이 완벽하게 완료된 유저 데이터를 새로 가져옴
     const user = await this.userService.getUserByEmail(payload.email);
     if (!user) throw new BadRequestException('유저 정보 조회 실패');
 
@@ -154,7 +152,7 @@ export class AuthService {
             email: user.email,
             companyId: user.companyId,
             projectId: targetDto?.projectId,
-          } as InvitePayload, // 정의된 인터페이스 사용
+          } as InvitePayload,
           {
             secret: process.env.JWT_INVITE_SECRET,
             expiresIn: '24h',
@@ -189,23 +187,23 @@ export class AuthService {
         throw new UnauthorizedException('유효하지 않은 토큰 타입입니다.');
       }
 
-      // 변수 할당 없이 Redis 값과 바로 비교하여 최적화
-      if (
-        (await this.redis.get(`refresh_token:${payload.sub}`)) !== refreshToken
-      ) {
+      const savedToken = await this.redis.get(`refresh_token:${payload.sub}`);
+      if (savedToken !== refreshToken) {
         throw new UnauthorizedException(
-          '만료되었거나 유효하지 않은 토큰입니다.',
+          '이미 사용되었거나 유효하지 않은 토큰입니다.',
         );
       }
 
       const user = await this.userService.getUserByEmail(payload.email);
-      if (!user) {
-        throw new UnauthorizedException('유저를 찾을 수 없습니다.');
-      }
+      if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
 
-      return this.loginUser(user);
+      const accessToken = await this.signToken(user, false);
+
+      return {
+        accessToken,
+        accessTokenExpiresAt: (Math.floor(Date.now() / 1000) + 3600).toString(),
+      };
     } catch {
-      // 사용하지 않는 변수 e 제거
       throw new UnauthorizedException(
         '토큰이 만료되었거나 갱신에 실패했습니다.',
       );

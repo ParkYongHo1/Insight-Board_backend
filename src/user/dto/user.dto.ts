@@ -1,4 +1,4 @@
-import { PickType } from '@nestjs/swagger'; // mapped-types 대신 swagger용 PickType 사용 권장
+import { PickType } from '@nestjs/swagger';
 import { UserModel } from '../entities/user.entity';
 import {
   IsEmail,

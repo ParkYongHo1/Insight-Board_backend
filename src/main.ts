@@ -16,7 +16,11 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
+  app.enableCors({
+    origin: 'http://localhost:3000',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
   const config = new DocumentBuilder()
     .setTitle('Insight Board API')
     .setDescription('인사이트 보드 백엔드 API 명세서')
