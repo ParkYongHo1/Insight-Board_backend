@@ -85,6 +85,7 @@ export class AuthService {
           name: membership.project.name,
           description: membership.project.description,
           role: membership.role,
+          createdAt: membership.project.createdAt,
         })) || [],
     };
 
@@ -139,9 +140,19 @@ export class AuthService {
     return this.loginUser(user);
   }
 
-  async invite(inviteList: InviteUserDto[]) {
-    const invitedUsers = await this.userService.inviteUsers(inviteList);
+  async invite(inviteList: InviteUserDto[], email: string) {
+    const currentUser = await this.userService.getUserByEmail(email);
+    if (!currentUser)
+      throw new UnauthorizedException('유저를 찾을 수 없습니다.');
+
+    const companyId = currentUser.companyId;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    // companyId 주입
+    const invitedUsers = await this.userService.inviteUsers(
+      inviteList,
+      companyId,
+    );
 
     await Promise.all(
       invitedUsers.map(async (user) => {
@@ -150,21 +161,16 @@ export class AuthService {
         const inviteToken = this.jwtService.sign(
           {
             email: user.email,
-            companyId: user.companyId,
+            companyId,
             projectId: targetDto?.projectId,
           } as InvitePayload,
-          {
-            secret: process.env.JWT_INVITE_SECRET,
-            expiresIn: '24h',
-          },
+          { secret: process.env.JWT_INVITE_SECRET, expiresIn: '24h' },
         );
-
-        const invitationLink = `${frontendUrl}/sign-up?token=${inviteToken}`;
 
         await this.mailerService.sendMail({
           to: user.email,
           subject: `[Insight Board] 프로젝트 초대`,
-          html: `<p>아래 링크를 클릭하여 가입을 완료하세요.</p><a href="${invitationLink}">가입하기</a>`,
+          html: `<p>아래 링크를 클릭하여 가입을 완료하세요.</p><a href="${frontendUrl}/sign-up?token=${inviteToken}">가입하기</a>`,
         });
       }),
     );
@@ -174,7 +180,6 @@ export class AuthService {
 
   async logout(userId: number) {
     await this.redis.del(`refresh_token:${userId}`);
-    return { message: '로그아웃 성공' };
   }
 
   async rotateToken(refreshToken: string) {

@@ -6,7 +6,7 @@ import {
   InviteUserDto,
   LoginDto,
 } from 'src/user/dto/user.dto';
-import { AccessTokenGuard } from './guard/access-token.guard';
+import { AccessTokenGuard, JwtPayload } from './guard/access-token.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { LoginResponseDto } from './dto/login-reaponse-dto';
 
@@ -36,14 +36,30 @@ export class AuthController {
   }
 
   @Post('register')
-  async register(@Body() finalizeDto: FinalizeRegistrationDto) {
-    return await this.authService.register(finalizeDto.token, finalizeDto);
+  async register(
+    @Body() finalizeDto: FinalizeRegistrationDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { loginData, refreshToken } = await this.authService.register(
+      finalizeDto.token,
+      finalizeDto,
+    );
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return loginData;
   }
 
   @UseGuards(AccessTokenGuard)
   @Post('invite')
-  async invite(@Body() inviteList: InviteUserDto[]) {
-    return await this.authService.invite(inviteList);
+  async invite(@Body() inviteList: InviteUserDto[], @Req() req: Request) {
+    const { email } = req.user as JwtPayload;
+    return await this.authService.invite(inviteList, email);
   }
   @Post('refresh')
   async rotateToken(@Req() req: Request) {
@@ -57,7 +73,13 @@ export class AuthController {
 
   @UseGuards(AccessTokenGuard)
   @Post('logout')
-  async logout(@Body('userId') userId: number) {
-    return await this.authService.logout(userId);
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
+
+    await this.authService.logout((req.user as { sub: number }).sub);
   }
 }
