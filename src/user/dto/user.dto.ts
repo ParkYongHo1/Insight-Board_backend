@@ -21,11 +21,7 @@ export class LoginDto {
   password: string;
 }
 
-export class InviteUserDto extends PickType(UserModel, [
-  'email',
-  'companyId',
-  'role',
-]) {
+export class InviteUserDto extends PickType(UserModel, ['email', 'role']) {
   @ApiProperty({
     example: 1,
     description: '초대할 프로젝트 ID',
