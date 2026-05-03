@@ -148,16 +148,15 @@ export class AuthService {
     const companyId = currentUser.companyId;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    // companyId 주입
     const invitedUsers = await this.userService.inviteUsers(
       inviteList,
       companyId,
     );
 
-    await Promise.all(
+    // await 제거 - 이메일은 백그라운드로 처리
+    Promise.all(
       invitedUsers.map(async (user) => {
         const targetDto = inviteList.find((dto) => dto.email === user.email);
-
         const inviteToken = this.jwtService.sign(
           {
             email: user.email,
@@ -173,7 +172,7 @@ export class AuthService {
           html: `<p>아래 링크를 클릭하여 가입을 완료하세요.</p><a href="${frontendUrl}/sign-up?token=${inviteToken}">가입하기</a>`,
         });
       }),
-    );
+    ).catch((err) => console.error('메일 발송 실패:', err));
 
     return { message: '초대 메일이 발송되었습니다.' };
   }
