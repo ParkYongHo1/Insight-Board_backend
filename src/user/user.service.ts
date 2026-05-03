@@ -1,12 +1,16 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { FinalizeRegistrationDto, InviteUserDto } from './dto/user.dto';
 import { UserModel } from './entities/user.entity';
 import { ProjectMemberModel } from 'src/project/entities/project-member.entity';
-import { ProjectModel } from 'src/project/entities/project.entity'; // ProjectModel 임포트
+import { ProjectModel } from 'src/project/entities/project.entity';
 import { UserRole } from './entities/user-role.enum';
-
+import * as bcrypt from 'bcrypt';
 @Injectable()
 export class UserService {
   constructor(
@@ -21,7 +25,7 @@ export class UserService {
    * 초대하기
    * 유저 생성과 동시에 프로젝트 멤버십(중간 테이블) 데이터를 생성합니다.
    */
-  async inviteUsers(inviteList: InviteUserDto[]) {
+  async inviteUsers(inviteList: InviteUserDto[], companyId: number) {
     const emails = inviteList.map((d) => d.email);
 
     // 1. 중복 체크
@@ -61,7 +65,7 @@ export class UserService {
       for (const dto of inviteList) {
         const user = this.userRepository.create({
           email: dto.email,
-          companyId: dto.companyId,
+          companyId,
           role: dto.role || UserRole.VIEWER,
         });
         const savedUser = await queryRunner.manager.save(user);
@@ -119,5 +123,114 @@ export class UserService {
         'projectMemberships.project',
       ],
     });
+  }
+
+  async updateMemberRole(
+    requesterId: number,
+    targetUserId: number,
+    role: string,
+  ) {
+    const requester = await this.userRepository.findOne({
+      where: { id: requesterId },
+    });
+
+    if (!requester || requester.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('관리자만 역할을 변경할 수 있습니다.');
+    }
+
+    if (requesterId === targetUserId) {
+      throw new BadRequestException('자기 자신의 역할은 변경할 수 없습니다.');
+    }
+
+    const target = await this.userRepository.findOne({
+      where: { id: targetUserId },
+    });
+
+    if (!target) {
+      throw new BadRequestException('존재하지 않는 유저입니다.');
+    }
+
+    target.role = role as UserRole;
+    await this.userRepository.save(target);
+
+    await this.projectMemberRepository.update(
+      { user: { id: targetUserId } },
+      { role: role as UserRole },
+    );
+
+    return { message: '역할이 변경되었습니다.' };
+  }
+
+  async removeMember(requesterId: number, targetUserId: number) {
+    const requester = await this.userRepository.findOne({
+      where: { id: requesterId },
+    });
+
+    if (!requester || requester.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('관리자만 팀원을 삭제할 수 있습니다.');
+    }
+
+    if (requesterId === targetUserId) {
+      throw new BadRequestException('자기 자신은 삭제할 수 없습니다.');
+    }
+
+    const target = await this.userRepository.findOne({
+      where: { id: targetUserId },
+    });
+
+    if (!target) {
+      throw new BadRequestException('존재하지 않는 유저입니다.');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. project_members 먼저 삭제
+      await queryRunner.manager.delete(ProjectMemberModel, {
+        user: { id: targetUserId },
+      });
+
+      // 2. user 삭제
+      await queryRunner.manager.remove(target);
+
+      await queryRunner.commitTransaction();
+      return { message: '팀원이 삭제되었습니다.' };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async updateName(userId: number, name: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('유저를 찾을 수 없습니다.');
+
+    user.name = name;
+    await this.userRepository.save(user);
+
+    return { message: '이름이 변경되었습니다.', name };
+  }
+
+  async updatePassword(
+    userId: number,
+    newPassword: string,
+    confirmPassword: string,
+  ) {
+    if (newPassword !== confirmPassword) {
+      throw new BadRequestException('비밀번호가 일치하지 않습니다.');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('유저를 찾을 수 없습니다.');
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await this.userRepository.save(user);
+
+    return { message: '비밀번호가 변경되었습니다.' };
   }
 }

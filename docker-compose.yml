@@ -1,15 +1,16 @@
 services:
   db:
-    image: mysql:8.0
-    container_name: insight-board_mysql_container
+    image: postgres:15
+    container_name: insight-board_postgres_container
     restart: always
     ports:
-      - '3306:3306'
+      - '5432:5432'
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: ${DB_ROOT_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ./mysql_data:/var/lib/mysql
+      - ./postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:alpine

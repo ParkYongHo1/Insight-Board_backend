@@ -50,3 +50,22 @@ export class FinalizeRegistrationDto {
   @MinLength(8)
   password: string;
 }
+
+export class UpdateNameDto {
+  @ApiProperty({ example: '박용호' })
+  @IsString()
+  @MinLength(2)
+  name: string;
+}
+
+export class UpdatePasswordDto {
+  @ApiProperty({ example: 'newpassword123' })
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+
+  @ApiProperty({ example: 'newpassword123' })
+  @IsString()
+  @MinLength(8)
+  confirmPassword: string;
+}
