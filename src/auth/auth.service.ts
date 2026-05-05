@@ -51,7 +51,11 @@ export class AuthService {
 
     const token = this.jwtService.sign(payload, {
       secret: process.env.JWT_SECRET,
-      expiresIn: isRefreshToken ? '7d' : '1h',
+      expiresIn: isRefreshToken
+        ? '7d'
+        : process.env.NODE_ENV === 'production'
+          ? '1h'
+          : '70s', // 로컬 70초
     });
 
     if (isRefreshToken) {
@@ -75,7 +79,10 @@ export class AuthService {
 
     const loginData = {
       accessToken,
-      accessTokenExpiresAt: (Math.floor(Date.now() / 1000) + 3600).toString(),
+      accessTokenExpiresAt: (
+        Math.floor(Date.now() / 1000) +
+        (process.env.NODE_ENV === 'production' ? 3600 : 70)
+      ).toString(),
       email: user.email,
       name: user.name || '박용호',
       companyName: user.company?.name || '소속 없음',
@@ -171,8 +178,12 @@ export class AuthService {
           subject: `[Insight Board] 프로젝트 초대`,
           html: `<p>아래 링크를 클릭하여 가입을 완료하세요.</p><a href="${frontendUrl}/sign-up?token=${inviteToken}">가입하기</a>`,
         });
+
+        console.log(`메일 발송 성공: ${user.email}`); // 추가
       }),
-    ).catch((err) => console.error('메일 발송 실패:', err));
+    ).catch((err) =>
+      console.error('메일 발송 실패 상세:', JSON.stringify(err)),
+    );
 
     return { message: '초대 메일이 발송되었습니다.' };
   }
@@ -205,7 +216,10 @@ export class AuthService {
 
       return {
         accessToken,
-        accessTokenExpiresAt: (Math.floor(Date.now() / 1000) + 3600).toString(),
+        accessTokenExpiresAt: (
+          Math.floor(Date.now() / 1000) +
+          (process.env.NODE_ENV === 'production' ? 3600 : 70)
+        ).toString(),
       };
     } catch {
       throw new UnauthorizedException(
