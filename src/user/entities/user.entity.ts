@@ -27,8 +27,11 @@ export class UserModel {
   password?: string;
 
   /**
-   * 소속 회사 관계 (N:1)
+   * 🚀 사용자 관심 분석 테마 필드 추가
    */
+  @Column({ name: 'interest_theme', default: 'SPACE_AEROSPACE' })
+  interestTheme: string;
+
   @ManyToOne(() => CompanyModel, (company) => company.users, {
     nullable: false,
   })
@@ -38,17 +41,9 @@ export class UserModel {
   @Column({ name: 'company_id' })
   companyId: number;
 
-  /**
-   * 유저의 기본 권한
-   */
   @Column({ type: 'enum', enum: UserRole, default: UserRole.VIEWER })
   role: UserRole;
 
-  /**
-   * [중요 수정사항]
-   * 기존 @ManyToOne project 및 projectId 컬럼을 삭제하고 아래로 대체합니다.
-   * 유저가 속한 여러 프로젝트의 멤버십 리스트를 가져옵니다.
-   */
   @OneToMany(() => ProjectMemberModel, (membership) => membership.user)
   projectMemberships: ProjectMemberModel[];
 
@@ -57,4 +52,7 @@ export class UserModel {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @Column({ nullable: true, name: 'slack_user_id' })
+  slackUserId?: string;
 }

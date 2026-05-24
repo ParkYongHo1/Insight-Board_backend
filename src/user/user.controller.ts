@@ -1,59 +1,27 @@
 import {
   Controller,
   Patch,
-  Delete,
-  Param,
   Body,
-  ParseIntPipe,
   UseGuards,
   Req,
+  Post,
+  Delete,
+  Get,
 } from '@nestjs/common';
 import { type Request } from 'express';
 import { UserService } from './user.service';
+import { SlackConnectDto } from './dto/slack-connect.dto';
 import {
   AccessTokenGuard,
   JwtPayload,
 } from 'src/auth/guard/access-token.guard';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
 import { UpdateNameDto, UpdatePasswordDto } from './dto/user.dto';
-
-export class UpdateRoleDto {
-  @IsString()
-  role: string;
-}
 
 @ApiTags('03. 유저 (User)')
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
-
-  @UseGuards(AccessTokenGuard)
-  @Patch(':userId/role')
-  @ApiOperation({ summary: '팀원 역할 변경' })
-  async updateMemberRole(
-    @Param('userId', ParseIntPipe) targetUserId: number,
-    @Body() dto: UpdateRoleDto,
-    @Req() req: Request,
-  ) {
-    const { sub: requesterId } = req.user as JwtPayload;
-    return await this.userService.updateMemberRole(
-      requesterId,
-      targetUserId,
-      dto.role,
-    );
-  }
-
-  @UseGuards(AccessTokenGuard)
-  @Delete(':userId')
-  @ApiOperation({ summary: '팀원 삭제' })
-  async removeMember(
-    @Param('userId', ParseIntPipe) targetUserId: number,
-    @Req() req: Request,
-  ) {
-    const { sub: requesterId } = req.user as JwtPayload;
-    return await this.userService.removeMember(requesterId, targetUserId);
-  }
 
   @UseGuards(AccessTokenGuard)
   @Patch('name')
@@ -73,5 +41,28 @@ export class UserController {
       dto.newPassword,
       dto.confirmPassword,
     );
+  }
+  @UseGuards(AccessTokenGuard)
+  @Post('slack/connect')
+  @ApiOperation({ summary: 'Slack 계정 연동' })
+  async connectSlack(@Body() dto: SlackConnectDto, @Req() req: Request) {
+    const { sub: userId } = req.user as JwtPayload;
+    return await this.userService.connectSlack(userId, dto.code);
+  }
+
+  @UseGuards(AccessTokenGuard)
+  @Delete('slack/disconnect')
+  @ApiOperation({ summary: 'Slack 연동 해제' })
+  async disconnectSlack(@Req() req: Request) {
+    const { sub: userId } = req.user as JwtPayload;
+    return await this.userService.disconnectSlack(userId);
+  }
+
+  @UseGuards(AccessTokenGuard)
+  @Get('slack/status')
+  @ApiOperation({ summary: 'Slack 연동 상태 확인' })
+  async getSlackStatus(@Req() req: Request) {
+    const { sub: userId } = req.user as JwtPayload;
+    return await this.userService.getSlackStatus(userId);
   }
 }

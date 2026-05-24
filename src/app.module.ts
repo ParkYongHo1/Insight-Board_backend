@@ -9,6 +9,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@songkeys/nestjs-redis';
 import { ConfigModule } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { StatsModule } from './stats/stats.module';
 
 @Module({
   imports: [
@@ -22,12 +24,10 @@ import { MailerModule } from '@nestjs-modules/mailer';
       username: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-
       ssl:
         process.env.NODE_ENV === 'production'
           ? { rejectUnauthorized: false }
           : false,
-
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
       autoLoadEntities: true,
@@ -56,6 +56,8 @@ import { MailerModule } from '@nestjs-modules/mailer';
     UserModule,
     CompanyModule,
     ProjectModule,
+    DashboardModule,
+    StatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

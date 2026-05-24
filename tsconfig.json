@@ -1,26 +1,36 @@
 {
   "compilerOptions": {
+    /* 하위 호환성 유지: 경로 에러 해결 */
+    "baseUrl": "./",
+    "ignoreDeprecations": "5.0", // baseUrl 관련 경고 무시 (TypeScript 5.0~7.0 대응)
+
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "resolvePackageJsonExports": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
+    "paths": {
+      "@/*": ["src/*"] // 기존에 쓰시던 방식 그대로 유지
+    },
+
+    /* 빌드 및 레이아웃 설정 */
+    "outDir": "./dist",
+    "rootDir": "./", // 지난번 'file layout' 에러 방지
+    "target": "ES2023",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "target": "ES2023",
+    "esModuleInterop": true,
     "sourceMap": true,
-    "outDir": "./dist",
-    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
+
+    /* 용호 님 스타일: 엔티티 단언(! ) 없이 사용 */
+    "strict": true,
+    "strictPropertyInitialization": false,
     "strictNullChecks": true,
-    "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "src/types/*.d.ts"]
+  "include": ["src/**/*", "src/types/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }

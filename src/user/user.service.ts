@@ -1,118 +1,25 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
-import { FinalizeRegistrationDto, InviteUserDto } from './dto/user.dto';
+import { Repository } from 'typeorm';
 import { UserModel } from './entities/user.entity';
-import { ProjectMemberModel } from 'src/project/entities/project-member.entity';
-import { ProjectModel } from 'src/project/entities/project.entity';
-import { UserRole } from './entities/user-role.enum';
 import * as bcrypt from 'bcrypt';
+import { SignUpDto } from './dto/user.dto';
+interface SlackOAuthResponse {
+  ok: boolean;
+  error?: string;
+  authed_user?: {
+    id: string;
+  };
+}
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(UserModel)
     private readonly userRepository: Repository<UserModel>,
-    @InjectRepository(ProjectMemberModel)
-    private readonly projectMemberRepository: Repository<ProjectMemberModel>,
-    private readonly dataSource: DataSource,
   ) {}
 
   /**
-   * 초대하기
-   * 유저 생성과 동시에 프로젝트 멤버십(중간 테이블) 데이터를 생성합니다.
-   */
-  async inviteUsers(inviteList: InviteUserDto[], companyId: number) {
-    const emails = inviteList.map((d) => d.email);
-
-    // 1. 중복 체크
-    const existingUsers = await this.userRepository.find({
-      where: { email: In(emails) },
-    });
-
-    if (existingUsers.length > 0) {
-      const alreadyRegistered = existingUsers
-        .filter((u) => u.password)
-        .map((u) => u.email);
-
-      if (alreadyRegistered.length > 0) {
-        throw new BadRequestException(
-          `이미 가입이 완료된 유저입니다: ${alreadyRegistered.join(', ')}`,
-        );
-      }
-
-      const alreadyInvited = existingUsers
-        .filter((u) => !u.password)
-        .map((u) => u.email);
-
-      if (alreadyInvited.length > 0) {
-        throw new BadRequestException(
-          `이미 초대 대기 중인 유저입니다: ${alreadyInvited.join(', ')}`,
-        );
-      }
-    }
-
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      const savedUsers: UserModel[] = [];
-
-      for (const dto of inviteList) {
-        const user = this.userRepository.create({
-          email: dto.email,
-          companyId,
-          role: dto.role || UserRole.VIEWER,
-        });
-        const savedUser = await queryRunner.manager.save(user);
-
-        if (dto.projectId) {
-          const membership = new ProjectMemberModel();
-          membership.user = savedUser;
-
-          // ✅ any 없이 ProjectModel 타입으로 단언하여 할당
-          // TypeORM은 관계 설정 시 ID 값만 있는 부분 객체도 허용합니다.
-          membership.project = { id: dto.projectId } as ProjectModel;
-
-          membership.role = dto.role || UserRole.VIEWER;
-
-          await queryRunner.manager.save(membership);
-        }
-
-        savedUsers.push(savedUser);
-      }
-
-      await queryRunner.commitTransaction();
-      return savedUsers;
-    } catch (err) {
-      await queryRunner.rollbackTransaction();
-      throw err;
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
-  /**
-   * 가입 완료 (이름, 비번 업데이트)
-   */
-  async finalizeRegistration(email: string, dto: FinalizeRegistrationDto) {
-    const user = await this.getUserByEmail(email);
-
-    if (!user) {
-      throw new BadRequestException('초대된 유저가 아닙니다.');
-    }
-
-    Object.assign(user, dto);
-
-    return await this.userRepository.save(user);
-  }
-
-  /**
-   * 유저 상세 정보 조회 (기업 및 프로젝트 조인)
+   * 유저 이메일 조회 (인증 시스템 및 세션 연동)
    */
   async getUserByEmail(email: string) {
     return await this.userRepository.findOne({
@@ -124,90 +31,29 @@ export class UserService {
       ],
     });
   }
-
-  async updateMemberRole(
-    requesterId: number,
-    targetUserId: number,
-    role: string,
-  ) {
-    const requester = await this.userRepository.findOne({
-      where: { id: requesterId },
+  /**
+   * 🚀 [추가] 유저 이름 조회 (이름 중복 체크용)
+   */
+  async getUserByName(name: string) {
+    return await this.userRepository.findOne({
+      where: { name },
     });
-
-    if (!requester || requester.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('관리자만 역할을 변경할 수 있습니다.');
-    }
-
-    if (requesterId === targetUserId) {
-      throw new BadRequestException('자기 자신의 역할은 변경할 수 없습니다.');
-    }
-
-    const target = await this.userRepository.findOne({
-      where: { id: targetUserId },
-    });
-
-    if (!target) {
-      throw new BadRequestException('존재하지 않는 유저입니다.');
-    }
-
-    target.role = role as UserRole;
-    await this.userRepository.save(target);
-
-    await this.projectMemberRepository.update(
-      { user: { id: targetUserId } },
-      { role: role as UserRole },
-    );
-
-    return { message: '역할이 변경되었습니다.' };
-  }
-
-  async removeMember(requesterId: number, targetUserId: number) {
-    const requester = await this.userRepository.findOne({
-      where: { id: requesterId },
-    });
-
-    if (!requester || requester.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('관리자만 팀원을 삭제할 수 있습니다.');
-    }
-
-    if (requesterId === targetUserId) {
-      throw new BadRequestException('자기 자신은 삭제할 수 없습니다.');
-    }
-
-    const target = await this.userRepository.findOne({
-      where: { id: targetUserId },
-    });
-
-    if (!target) {
-      throw new BadRequestException('존재하지 않는 유저입니다.');
-    }
-
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      // 1. project_members 먼저 삭제
-      await queryRunner.manager.delete(ProjectMemberModel, {
-        user: { id: targetUserId },
-      });
-
-      // 2. user 삭제
-      await queryRunner.manager.remove(target);
-
-      await queryRunner.commitTransaction();
-      return { message: '팀원이 삭제되었습니다.' };
-    } catch (err) {
-      await queryRunner.rollbackTransaction();
-      throw err;
-    } finally {
-      await queryRunner.release();
-    }
   }
 
   async updateName(userId: number, name: string) {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) throw new BadRequestException('유저를 찾을 수 없습니다.');
+
+    if (user.name === name) {
+      return { message: '이전과 동일한 이름입니다.', name };
+    }
+
+    const isNameExist = await this.getUserByName(name);
+    if (isNameExist) {
+      throw new BadRequestException(
+        '이미 사용 중인 이름입니다. 다른 이름을 입력해주세요.',
+      );
+    }
 
     user.name = name;
     await this.userRepository.save(user);
@@ -215,6 +61,9 @@ export class UserService {
     return { message: '이름이 변경되었습니다.', name };
   }
 
+  /**
+   * 내 정보 페이지 내 비밀번호 변경 처리
+   */
   async updatePassword(
     userId: number,
     newPassword: string,
@@ -232,5 +81,65 @@ export class UserService {
     await this.userRepository.save(user);
 
     return { message: '비밀번호가 변경되었습니다.' };
+  }
+
+  async finalizeRegistration(dto: SignUpDto) {
+    const user = this.userRepository.create({
+      email: dto.email,
+      name: dto.name,
+      password: dto.password,
+    });
+
+    await this.userRepository.save(user);
+    return user;
+  }
+
+  async connectSlack(
+    userId: number,
+    code: string,
+  ): Promise<{ message: string }> {
+    const redirectUri = process.env.SLACK_REDIRECT_URI;
+    const clientId = process.env.SLACK_CLIENT_ID;
+    const clientSecret = process.env.SLACK_CLIENT_SECRET;
+
+    const tokenRes = await fetch('https://slack.com/api/oauth.v2.access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId ?? '',
+        client_secret: clientSecret ?? '',
+        redirect_uri: redirectUri ?? '',
+      }),
+    });
+
+    const tokenData = (await tokenRes.json()) as SlackOAuthResponse;
+
+    if (!tokenData.ok) {
+      throw new BadRequestException(`Slack 연동 실패: ${tokenData.error}`);
+    }
+
+    const slackUserId = tokenData.authed_user?.id;
+    if (!slackUserId) {
+      throw new BadRequestException('Slack user_id를 가져올 수 없습니다.');
+    }
+
+    await this.userRepository.update(userId, { slackUserId });
+    return { message: 'Slack 연동이 완료되었습니다.' };
+  }
+
+  async disconnectSlack(userId: number): Promise<{ message: string }> {
+    await this.userRepository.update(userId, { slackUserId: undefined });
+    return { message: 'Slack 연동이 해제되었습니다.' };
+  }
+
+  async getSlackStatus(
+    userId: number,
+  ): Promise<{ connected: boolean; slackUserId: string | null }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    return {
+      connected: !!user?.slackUserId,
+      slackUserId: user?.slackUserId ?? null,
+    };
   }
 }
