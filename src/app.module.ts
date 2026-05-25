@@ -36,6 +36,11 @@ import { StatsModule } from './stats/stats.module';
       config: {
         host: process.env.REDIS_HOST,
         port: Number(process.env.REDIS_PORT || '6379'),
+        password: process.env.REDIS_PASSWORD,
+        tls:
+          process.env.NODE_ENV === 'production'
+            ? { rejectUnauthorized: false }
+            : undefined,
       },
     }),
     MailerModule.forRoot({
