@@ -24,11 +24,6 @@ export class UserService {
   async getUserByEmail(email: string) {
     return await this.userRepository.findOne({
       where: { email },
-      relations: [
-        'company',
-        'projectMemberships',
-        'projectMemberships.project',
-      ],
     });
   }
   /**

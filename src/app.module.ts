@@ -3,8 +3,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
-import { CompanyModule } from './company/company.module';
-import { ProjectModule } from './project/project.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@songkeys/nestjs-redis';
 import { ConfigModule } from '@nestjs/config';
@@ -59,8 +57,6 @@ import { StatsModule } from './stats/stats.module';
     }),
     AuthModule,
     UserModule,
-    CompanyModule,
-    ProjectModule,
     DashboardModule,
     StatsModule,
   ],
