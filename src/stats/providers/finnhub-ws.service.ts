@@ -5,8 +5,6 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { WebSocket } from 'ws';
-import { RedisService } from '@songkeys/nestjs-redis';
-import { Redis } from 'ioredis';
 
 interface FinnhubTrade {
   p: number;
@@ -25,17 +23,13 @@ export class FinnhubWsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FinnhubWsService.name);
   private readonly apiKey = process.env.FINNHUB_API_KEY;
   private ws: WebSocket | null = null;
-  private redis!: Redis;
+  private priceMap = new Map<string, { price: number; updatedAt: number }>();
   private subscribedTickers = new Set<string>();
   private reconnectTimer: NodeJS.Timeout | null = null;
-  private reconnectDelay = 10000; // 초기 10초
-  private readonly maxReconnectDelay = 60000; // 최대 60초
-
-  constructor(private readonly redisService: RedisService) {}
+  private reconnectDelay = 10000;
+  private readonly maxReconnectDelay = 60000;
 
   onModuleInit() {
-    this.redis = this.redisService.getClient();
-    // 서버 시작 시 3초 후 연결 (다른 모듈 초기화 완료 대기)
     setTimeout(() => this.connect(), 3000);
   }
 
@@ -49,9 +43,8 @@ export class FinnhubWsService implements OnModuleInit, OnModuleDestroy {
 
     this.ws.on('open', () => {
       this.logger.log('[FinnhubWS] 연결됨');
-      this.reconnectDelay = 10000; // 연결 성공 시 딜레이 초기화
+      this.reconnectDelay = 10000;
 
-      // 티커마다 300ms 간격으로 구독 (Rate Limit 방지)
       let delay = 0;
       this.subscribedTickers.forEach((ticker) => {
         setTimeout(() => this.sendSubscribe(ticker), delay);
@@ -60,23 +53,19 @@ export class FinnhubWsService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.ws.on('message', (raw: Buffer) => {
-      void (async () => {
-        try {
-          const msg = JSON.parse(raw.toString()) as FinnhubWsMessage;
-          if (msg.type !== 'trade' || !msg.data?.length) return;
+      try {
+        const msg = JSON.parse(raw.toString()) as FinnhubWsMessage;
+        if (msg.type !== 'trade' || !msg.data?.length) return;
 
-          for (const trade of msg.data) {
-            await this.redis.set(
-              `price:${trade.s}`,
-              JSON.stringify({ price: trade.p, updatedAt: Date.now() }),
-              'EX',
-              60,
-            );
-          }
-        } catch (e) {
-          this.logger.error('[FinnhubWS] 메시지 파싱 실패:', e);
+        for (const trade of msg.data) {
+          this.priceMap.set(trade.s, {
+            price: trade.p,
+            updatedAt: Date.now(),
+          });
         }
-      })();
+      } catch (e) {
+        this.logger.error('[FinnhubWS] 메시지 파싱 실패:', e);
+      }
     });
 
     this.ws.on('error', (err) => {
@@ -89,7 +78,6 @@ export class FinnhubWsService implements OnModuleInit, OnModuleDestroy {
       );
       this.reconnectTimer = setTimeout(() => {
         this.connect();
-        // 지수 백오프: 실패할수록 딜레이 증가
         this.reconnectDelay = Math.min(
           this.reconnectDelay * 2,
           this.maxReconnectDelay,
@@ -119,10 +107,7 @@ export class FinnhubWsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async getPrice(ticker: string): Promise<number | null> {
-    const raw = await this.redis.get(`price:${ticker}`);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as { price: number };
-    return data.price;
+  getPrice(ticker: string): number | null {
+    return this.priceMap.get(ticker)?.price ?? null;
   }
 }
