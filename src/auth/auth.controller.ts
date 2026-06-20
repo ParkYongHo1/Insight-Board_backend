@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Res, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  UseGuards,
+  Req,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { type Response, type Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto, SignUpDto } from 'src/user/dto/user.dto';
@@ -50,7 +58,6 @@ export class AuthController {
 
     return loginData;
   }
-
   @Post('refresh')
   @ApiOperation({ summary: '토큰 만료시 리프레시 갱신 (RTR)' })
   async rotateToken(
@@ -58,21 +65,28 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const refreshToken = req.cookies?.['refreshToken'] as string | undefined;
-    if (!refreshToken) return null;
 
-    const {
-      accessToken,
-      accessTokenExpiresAt,
-      refreshToken: newRefreshToken,
-    } = await this.authService.rotateToken(refreshToken);
+    if (!refreshToken) {
+      throw new UnauthorizedException('refreshToken이 없습니다.');
+    }
 
-    // 새 리프레시 토큰으로 쿠키 동적 교체 주입 (RTR 완성)
-    res.cookie('refreshToken', newRefreshToken, COOKIE_OPTIONS);
+    try {
+      const {
+        accessToken,
+        accessTokenExpiresAt,
+        refreshToken: newRefreshToken,
+      } = await this.authService.rotateToken(refreshToken);
 
-    return {
-      accessToken,
-      accessTokenExpiresAt,
-    };
+      res.cookie('refreshToken', newRefreshToken, COOKIE_OPTIONS);
+      return { accessToken, accessTokenExpiresAt };
+    } catch (err) {
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      });
+      throw err;
+    }
   }
 
   @UseGuards(AccessTokenGuard)
